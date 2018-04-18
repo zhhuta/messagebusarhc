@@ -18,7 +18,7 @@ const subscriptonName = "workerone" // subcritopn name
 const PubsubTopicID = "one" // read topic
 
 const PubsubTopicIDnext = "two" // write topic
-
+// Strcture that represent message that is sent and read from PubSub
 type eventMessage struct {
 	name    string
 	message string

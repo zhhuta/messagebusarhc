@@ -3,6 +3,7 @@ package messagebusarhc
 import (
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 
 	"github.com/go-sql-driver/mysql"
@@ -30,15 +31,15 @@ type mysqlDB struct {
 }
 
 // Mapping EventDatabase to mysqlSDB
-var _ EventsDatabase = &mysqlDB{}
+var _ EventDatabase = &mysqlDB{}
 
 //Structure that keeps mysql conneciton configuration
 type MySQLConfig struct {
-	Username   string
-	Password   string
-	Host       string
-	Port       int
-	UnixSocket string
+	Username   string // Username
+	Password   string // Password
+	Host       string //Host
+	Port       int    //Port
+	UnixSocket string //UnixSocket path
 }
 
 func (c MySQLConfig) dataStoreName(databasesName string) string {
@@ -56,8 +57,8 @@ func (c MySQLConfig) dataStoreName(databasesName string) string {
 	return fmt.Sprintf("%stcp([%s]:%d)/%s", credentials, c.Host, c.Port, databasesName)
 }
 
-func (config MySQLConfig) ensureTableExists() error {
-	connection, err := sql.Open("mysql", config.dataStoreName(""))
+func (c MySQLConfig) ensureTableExists() error {
+	connection, err := sql.Open("mysql", c.dataStoreName(""))
 	if err != nil {
 		return fmt.Errorf("mysql: could not get a connection: %v", err)
 	}
@@ -96,13 +97,13 @@ func createTable(conn *sql.DB) error {
 	return nil
 }
 
-func createNewMySQLDB(config MySQLConfig) (EventsDatabase, error) {
+func createNewMySQLDB(c MySQLConfig) (EventDatabase, error) {
 	//Check if DB and tables are present
-	if err := config.ensureTableExists(); err != nil {
+	if err := c.ensureTableExists(); err != nil {
 		return nil, err
 	}
 
-	conn, err := sql.Open("mysql", config.dataStoreName("eventsarray"))
+	conn, err := sql.Open("mysql", c.dataStoreName("eventsarray"))
 	if err != nil {
 		return nil, fmt.Errorf("mysql: could not get a connection: %v", err)
 	}
@@ -204,11 +205,51 @@ const insertStatement = `
    name, message, 
  ) VALUES (?, ?)`
 
-func (db *mysqlDB) AddEevent(e Event) (id int64, err error) {
+func (db *mysqlDB) AddEevent(e *Event) (id int64, err error) {
 	// emplement  insert.
-	return 0, nil
+	r, err := execAffectingOneRow(db.insert, e.Name, e.Message)
+	if err != nil {
+		return 0, nil
+	}
+	lastInsertID, err := r.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("mysql[Insert]: can't get last insert ID: %v ", err)
+	}
+	return lastInsertID, nil
 }
 
-const updateStatement = ``
+const updateStatement = `UPDATE events
+SET name=?, message=?
+WHERE id = ?`
 
-const deleteStatement = ``
+func (db *mysqlDB) UpdateEvent(e *Event) error {
+	if e.ID == 0 {
+		return errors.New(" mysql[UPDATE]: event dosn't have ID")
+	}
+	_, err := execAffectingOneRow(db.update, e.Name, e.Message, e.ID)
+	return err
+}
+
+const deleteStatement = `DELETE FROM events WHERE id = ?`
+
+func (db *mysqlDB) DelEvent(id int64) error {
+	if id == 0 {
+		return errors.New("mysql[DELETE]: event dosn't have ID ")
+	}
+	_, err := execAffectingOneRow(db.delete, id)
+	return err
+}
+
+func execAffectingOneRow(stmt *sql.Stmt, args ...interface{}) (sql.Result, error) {
+	r, err := stmt.Exec(args...)
+	if err != nil {
+		return r, fmt.Errorf("mysql: could not execute statement: %v", err)
+	}
+	rowsAffected, err := r.RowsAffected()
+	if err != nil {
+		return r, fmt.Errorf("mysql: could not get rows affected: %v", err)
+	} else if rowsAffected != 1 {
+		return r, fmt.Errorf("mysql: expected 1 row affected, got %d", rowsAffected)
+	}
+	return r, nil
+}

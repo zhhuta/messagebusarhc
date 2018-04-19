@@ -78,6 +78,7 @@ func subcribe() {
 
 }
 func updateDB(event eventMessage) error {
+	// Implement writing to MySQL DB
 	return nil
 }
 

@@ -14,7 +14,12 @@ type EventDatabase interface {
 	//get aprticular event
 	GetEvent(id int64) (*Event, error)
 	//add event to the db
-	AddEevent(e Event) (id int64, err error)
+	AddEevent(e *Event) (id int64, err error)
+	//update event
+	UpdateEvent(e *Event) error
+	// delete event
+	DelEvent(id int64) error
+
 	// Close connection to db
 	Close()
 }
